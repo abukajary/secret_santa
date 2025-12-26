@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Secret Santa Quest</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+        }
+        #login-screen, #game-screen, #win-screen {
+            width: 100%;
+            max-width: 500px;
+            padding: 20px;
+        }
+        .hidden { display: none; }
+        input {
+            display: block;
+            width: 80%;
+            margin: 10px auto;
+            padding: 10px;
+            font-size: 16px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            background: #4CAF50;
+            border: none;
+            color: white;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        canvas {
+            background: #222;
+            border: 2px solid #444;
+            display: block;
+            margin: 0 auto;
+        }
+        #score-display {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <h2>SECURITY CHECK</h2>
+        <p>Введите данные из записок</p>
+        <input type="text" id="pass-input" placeholder="Код-слово из записки №1">
+        <input type="number" id="code-input" placeholder="Число из записки №2">
+        <button onclick="checkLogin()">START GAME</button>
+        <p id="error-msg" style="color: red; display: none;">Неверные данные!</p>
+    </div>
+
+    <div id="game-screen" class="hidden">
+        <div id="score-display">Счет: 0 / 100</div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="win-screen" class="hidden">
+        <h1 style="color: #4CAF50;">УСПЕХ!</h1>
+        <p>Финальный код-слово:</p>
+        <h2>БАНКАЙ</h2>
+        <p>Твой подарок лежит:</p>
+        <h3>В стиральной машине<br>(шутка, проверь духовку)</h3>
+    </div>
+
+    <script>
+        // КОНФИГ
+        const TARGET_SCORE = 100;
+        const PASSWORD_1 = "СЭНСЭЙ"; 
+        const PASSWORD_2 = "2026";
+        
+        // Переменные состояния
+        let canvas, ctx;
+        let score = 0;
+        let gameActive = false;
+        let player = { x: 0, w: 50, h: 50, color: '#3498db' };
+        let items = [];
+        let lastTime = 0;
+        let dropTimer = 0;
+
+        function checkLogin() {
+            const p1 = document.getElementById('pass-input').value.trim().toUpperCase();
+            const p2 = document.getElementById('code-input').value.trim();
+
+            if (p1 === PASSWORD_1 && p2 === PASSWORD_2) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('game-screen').classList.remove('hidden');
+                initGame();
+            } else {
+                document.getElementById('error-msg').style.display = 'block';
+            }
+        }
+
+        function initGame() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Адаптив под экран
+            canvas.width = Math.min(window.innerWidth - 20, 400);
+            canvas.height = window.innerHeight * 0.7;
+            
+            player.x = canvas.width / 2 - player.w / 2;
+            player.y = canvas.height - player.h - 10;
+
+            // Управление (тач + мышь)
+            canvas.addEventListener('mousemove', movePlayer);
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                movePlayer(e.touches[0]);
+            }, { passive: false });
+
+            gameActive = true;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function movePlayer(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX = e.clientX;
+            
+            let relativeX = clientX - rect.left;
+            if(relativeX > 0 && relativeX < canvas.width) {
+                player.x = relativeX - player.w / 2;
+            }
+        }
+
+        function spawnItem() {
+            const isGood = Math.random() > 0.3; // 70% шанс хорошего предмета
+            items.push({
+                x: Math.random() * (canvas.width - 30),
+                y: -30,
+                w: 30,
+                h: 30,
+                speed: 3 + Math.random() * 3,
+                type: isGood ? 'good' : 'bad',
+                color: isGood ? '#2ecc71' : '#e74c3c'
+            });
+        }
+
+        function update(dt) {
+            dropTimer += dt;
+            if (dropTimer > 500) { // Каждые 0.5 сек новый предмет
+                spawnItem();
+                dropTimer = 0;
+            }
+
+            // Обновление предметов
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.y += item.speed;
+
+                // Проверка столкновения
+                if (
+                    item.x < player.x + player.w &&
+                    item.x + item.w > player.x &&
+                    item.y < player.y + player.h &&
+                    item.y + item.h > player.y
+                ) {
+                    if (item.type === 'good') score += 10;
+                    else score -= 5;
+                    
+                    if (score < 0) score = 0;
+                    
+                    items.splice(i, 1);
+                    checkWin();
+                    continue;
+                }
+
+                // Удаление если улетел вниз
+                if (item.y > canvas.height) {
+                    items.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Игрок
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+
+            // Предметы
+            items.forEach(item => {
+                ctx.fillStyle = item.color;
+                ctx.fillRect(item.x, item.y, item.w, item.h);
+            });
+            
+            document.getElementById('score-display').innerText = `Счет: ${score} / ${TARGET_SCORE}`;
+        }
+
+        function checkWin() {
+            if (score >= TARGET_SCORE) {
+                gameActive = false;
+                document.getElementById('game-screen').classList.add('hidden');
+                document.getElementById('win-screen').classList.remove('hidden');
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (!gameActive) return;
+            
+            let dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            update(dt);
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
