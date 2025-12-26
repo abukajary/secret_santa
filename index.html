@@ -69,6 +69,20 @@
         }
         h1, h2, h3 { margin: 10px 0; }
         .hint-text { color: #aaa; font-size: 14px; margin-top: 20px; }
+        .shake { animation: shake 0.5s; }
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
     </style>
 </head>
 <body>
@@ -85,7 +99,7 @@
     <div id="game-screen" class="hidden">
         <div id="score-display">Очки: 0 / 200</div>
         <canvas id="gameCanvas"></canvas>
-        <p class="hint-text">Двигай кота 😺 и лови подарки 🎁</p>
+        <p class="hint-text">Двигай кота 😺 и лови подарки 🎁<br>Пропуск подарка: -20 очков!</p>
     </div>
 
     <div id="win-screen" class="hidden">
@@ -104,7 +118,6 @@
     </div>
 
     <script>
-        // НАСТРОЙКИ
         const TARGET_SCORE = 200;
         const PASSWORD_1 = "МАСЯ"; 
         const PASSWORD_2 = "2026";
@@ -112,26 +125,64 @@
         let canvas, ctx;
         let score = 0;
         let gameActive = false;
-        // Размер игрока и предметов
         let itemSize = 40; 
         
         let player = { x: 0, w: itemSize, h: itemSize };
         let items = [];
         let lastTime = 0;
         let dropTimer = 0;
+        
+        // Аудио контекст
+        let audioCtx;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Синтезатор звуков (чтобы не грузить файлы)
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'good') {
+                // Высокий "Мяу"
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(900, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.15);
+            } else {
+                // Низкий рык (ошибка)
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.2);
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.25);
+            }
+        }
 
         function checkLogin() {
             const p1 = document.getElementById('pass-input').value.trim().toUpperCase();
             const p2 = document.getElementById('code-input').value.trim();
 
             if (p1 === PASSWORD_1 && p2 === PASSWORD_2) {
+                initAudio(); // Инициализируем звук по клику (политика браузеров)
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('game-screen').classList.remove('hidden');
                 initGame();
             } else {
                 const err = document.getElementById('error-msg');
                 err.style.display = 'block';
-                // Тряска инпута
                 err.animate([
                     { transform: 'translateX(0)' },
                     { transform: 'translateX(-5px)' },
@@ -166,7 +217,6 @@
             let clientX = e.clientX;
             
             let relativeX = clientX - rect.left;
-            // Центрируем кота под пальцем
             if(relativeX > 0 && relativeX < canvas.width) {
                 player.x = relativeX - player.w / 2;
             }
@@ -179,15 +229,21 @@
                 y: -itemSize,
                 w: itemSize,
                 h: itemSize,
-                speed: 4 + Math.random() * 3, // Скорость падения
+                speed: 4 + Math.random() * 3,
                 type: isGood ? 'good' : 'bad',
                 emoji: isGood ? '🎁' : '⚫'
             });
         }
 
+        function resetScore() {
+            score = 0;
+            // Визуальный эффект сброса
+            canvas.classList.add('shake');
+            setTimeout(() => canvas.classList.remove('shake'), 500);
+        }
+
         function update(dt) {
             dropTimer += dt;
-            // Спавн чаще со временем
             let spawnRate = 500;
             if (score > 50) spawnRate = 400;
             if (score > 150) spawnRate = 300;
@@ -201,24 +257,36 @@
                 let item = items[i];
                 item.y += item.speed;
 
-                // Столкновение (простая проверка пересечения квадратов)
+                // Столкновение
                 if (
                     item.x < player.x + player.w &&
                     item.x + item.w > player.x &&
                     item.y < player.y + player.h &&
                     item.y + item.h > player.y
                 ) {
-                    if (item.type === 'good') score += 10;
-                    else score -= 5;
+                    if (item.type === 'good') {
+                        score += 10;
+                        playSound('good');
+                    } else {
+                        score -= 5;
+                        playSound('bad');
+                    }
                     
-                    if (score < 0) score = 0;
+                    if (score < 0) resetScore();
                     
                     items.splice(i, 1);
                     checkWin();
                     continue;
                 }
 
+                // Улетел за экран
                 if (item.y > canvas.height) {
+                    // Если упустили хороший подарок - штраф
+                    if (item.type === 'good') {
+                        score -= 20;
+                        playSound('bad');
+                        if (score < 0) resetScore();
+                    }
                     items.splice(i, 1);
                 }
             }
@@ -231,10 +299,8 @@
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
 
-            // Рисуем Кота
             ctx.fillText('😺', player.x, player.y);
 
-            // Рисуем Предметы
             items.forEach(item => {
                 ctx.fillText(item.emoji, item.x, item.y);
             });
