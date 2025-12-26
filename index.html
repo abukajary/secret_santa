@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Secret Santa Quest</title>
+    <title>Secret Santa Game</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #1a1a1a;
-            color: #fff;
-            font-family: 'Courier New', Courier, monospace;
+            background-color: #202020;
+            color: #eee;
+            font-family: 'Verdana', sans-serif;
             overflow: hidden;
             display: flex;
             justify-content: center;
@@ -27,70 +27,95 @@
         input {
             display: block;
             width: 80%;
-            margin: 10px auto;
-            padding: 10px;
-            font-size: 16px;
+            margin: 15px auto;
+            padding: 12px;
+            font-size: 18px;
             background: #333;
-            border: 1px solid #555;
+            border: 2px solid #555;
+            border-radius: 8px;
             color: #fff;
             text-align: center;
+            outline: none;
         }
         button {
-            padding: 10px 20px;
+            padding: 12px 30px;
             font-size: 18px;
-            background: #4CAF50;
+            background: #e74c3c;
             border: none;
+            border-radius: 8px;
             color: white;
+            font-weight: bold;
             cursor: pointer;
-            margin-top: 10px;
+            margin-top: 15px;
+            box-shadow: 0 4px 0 #c0392b;
+        }
+        button:active {
+            box-shadow: none;
+            transform: translateY(4px);
         }
         canvas {
-            background: #222;
-            border: 2px solid #444;
+            background: #2c3e50;
+            border: 4px solid #fff;
+            border-radius: 10px;
             display: block;
             margin: 0 auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
         #score-display {
             font-size: 24px;
-            margin-bottom: 10px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #f1c40f;
         }
+        h1, h2, h3 { margin: 10px 0; }
+        .hint-text { color: #aaa; font-size: 14px; margin-top: 20px; }
     </style>
 </head>
 <body>
 
     <div id="login-screen">
-        <h2>SECURITY CHECK</h2>
-        <p>Введите данные из записок</p>
-        <input type="text" id="pass-input" placeholder="Код-слово из записки №1">
-        <input type="number" id="code-input" placeholder="Число из записки №2">
-        <button onclick="checkLogin()">START GAME</button>
-        <p id="error-msg" style="color: red; display: none;">Неверные данные!</p>
+        <h2>🎄 SECRET SANTA 🎄</h2>
+        <p>Введи пароли с записок</p>
+        <input type="text" id="pass-input" placeholder="Слово (Записка 1)">
+        <input type="number" id="code-input" placeholder="Цифры (Записка 2)">
+        <button onclick="checkLogin()">ПОГНАЛИ</button>
+        <p id="error-msg" style="color: #e74c3c; display: none; font-weight: bold; margin-top: 10px;">Не-а, подумай еще!</p>
     </div>
 
     <div id="game-screen" class="hidden">
-        <div id="score-display">Счет: 0 / 100</div>
+        <div id="score-display">Очки: 0 / 200</div>
         <canvas id="gameCanvas"></canvas>
+        <p class="hint-text">Двигай кота 😺 и лови подарки 🎁</p>
     </div>
 
     <div id="win-screen" class="hidden">
-        <h1 style="color: #4CAF50;">УСПЕХ!</h1>
-        <p>Финальный код-слово:</p>
-        <h2>БАНКАЙ</h2>
-        <p>Твой подарок лежит:</p>
-        <h3>В стиральной машине<br>(шутка, проверь духовку)</h3>
+        <h1 style="color: #2ecc71;">СЮДА! 🎉</h1>
+        <p style="font-size: 18px; margin-top: 20px;">
+            Ты прошел этот путь ниндзя. <br>
+            Санта тобой гордится.
+        </p>
+        <hr style="border-color: #555; margin: 20px 0;">
+        <h3>Твой подарок ждет тебя:</h3>
+        
+        <h2 style="color: #f1c40f; background: #333; padding: 10px; border-radius: 5px;">
+            В стиралке (шутка, проверь духовку)
+        </h2>
+        <p style="margin-top: 30px;">С Новым Годом! ❤️</p>
     </div>
 
     <script>
-        // КОНФИГ
-        const TARGET_SCORE = 100;
-        const PASSWORD_1 = "СЭНСЭЙ"; 
+        // НАСТРОЙКИ
+        const TARGET_SCORE = 200;
+        const PASSWORD_1 = "МАСЯ"; 
         const PASSWORD_2 = "2026";
         
-        // Переменные состояния
         let canvas, ctx;
         let score = 0;
         let gameActive = false;
-        let player = { x: 0, w: 50, h: 50, color: '#3498db' };
+        // Размер игрока и предметов
+        let itemSize = 40; 
+        
+        let player = { x: 0, w: itemSize, h: itemSize };
         let items = [];
         let lastTime = 0;
         let dropTimer = 0;
@@ -104,7 +129,15 @@
                 document.getElementById('game-screen').classList.remove('hidden');
                 initGame();
             } else {
-                document.getElementById('error-msg').style.display = 'block';
+                const err = document.getElementById('error-msg');
+                err.style.display = 'block';
+                // Тряска инпута
+                err.animate([
+                    { transform: 'translateX(0)' },
+                    { transform: 'translateX(-5px)' },
+                    { transform: 'translateX(5px)' },
+                    { transform: 'translateX(0)' }
+                ], { duration: 200 });
             }
         }
 
@@ -112,14 +145,12 @@
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
             
-            // Адаптив под экран
-            canvas.width = Math.min(window.innerWidth - 20, 400);
-            canvas.height = window.innerHeight * 0.7;
+            canvas.width = Math.min(window.innerWidth - 30, 400);
+            canvas.height = window.innerHeight * 0.65;
             
             player.x = canvas.width / 2 - player.w / 2;
             player.y = canvas.height - player.h - 10;
 
-            // Управление (тач + мышь)
             canvas.addEventListener('mousemove', movePlayer);
             canvas.addEventListener('touchmove', (e) => {
                 e.preventDefault();
@@ -135,37 +166,42 @@
             let clientX = e.clientX;
             
             let relativeX = clientX - rect.left;
+            // Центрируем кота под пальцем
             if(relativeX > 0 && relativeX < canvas.width) {
                 player.x = relativeX - player.w / 2;
             }
         }
 
         function spawnItem() {
-            const isGood = Math.random() > 0.3; // 70% шанс хорошего предмета
+            const isGood = Math.random() > 0.3; 
             items.push({
-                x: Math.random() * (canvas.width - 30),
-                y: -30,
-                w: 30,
-                h: 30,
-                speed: 3 + Math.random() * 3,
+                x: Math.random() * (canvas.width - itemSize),
+                y: -itemSize,
+                w: itemSize,
+                h: itemSize,
+                speed: 4 + Math.random() * 3, // Скорость падения
                 type: isGood ? 'good' : 'bad',
-                color: isGood ? '#2ecc71' : '#e74c3c'
+                emoji: isGood ? '🎁' : '⚫'
             });
         }
 
         function update(dt) {
             dropTimer += dt;
-            if (dropTimer > 500) { // Каждые 0.5 сек новый предмет
+            // Спавн чаще со временем
+            let spawnRate = 500;
+            if (score > 50) spawnRate = 400;
+            if (score > 150) spawnRate = 300;
+
+            if (dropTimer > spawnRate) { 
                 spawnItem();
                 dropTimer = 0;
             }
 
-            // Обновление предметов
             for (let i = items.length - 1; i >= 0; i--) {
                 let item = items[i];
                 item.y += item.speed;
 
-                // Проверка столкновения
+                // Столкновение (простая проверка пересечения квадратов)
                 if (
                     item.x < player.x + player.w &&
                     item.x + item.w > player.x &&
@@ -182,7 +218,6 @@
                     continue;
                 }
 
-                // Удаление если улетел вниз
                 if (item.y > canvas.height) {
                     items.splice(i, 1);
                 }
@@ -192,17 +227,19 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Игрок
-            ctx.fillStyle = player.color;
-            ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.font = `${itemSize}px serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
 
-            // Предметы
+            // Рисуем Кота
+            ctx.fillText('😺', player.x, player.y);
+
+            // Рисуем Предметы
             items.forEach(item => {
-                ctx.fillStyle = item.color;
-                ctx.fillRect(item.x, item.y, item.w, item.h);
+                ctx.fillText(item.emoji, item.x, item.y);
             });
             
-            document.getElementById('score-display').innerText = `Счет: ${score} / ${TARGET_SCORE}`;
+            document.getElementById('score-display').innerText = `Очки: ${score} / ${TARGET_SCORE}`;
         }
 
         function checkWin() {
